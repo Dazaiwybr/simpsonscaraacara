@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Simpsons Cara a Cara - Online Edition</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', cursive;
+            background: linear-gradient(135deg, #1a5f7a 0%, #0d3b5a 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* Animações */
+        @keyframes floatCloud {
+            from { transform: translateX(-20vw); }
+            to { transform: translateX(120vw); }
+        }
+        @keyframes twinkle {
+            0%,100% { opacity: 0.15; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.2); }
+        }
+        @keyframes pulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes fadeMsg {
+            0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            20% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            80% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+        @keyframes cardPop {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .cloud {
+            position: fixed;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 1000px;
+            pointer-events: none;
+            z-index: 0;
+            animation: floatCloud 25s linear infinite;
+        }
+        .star {
+            position: fixed;
+            background: #FFE8A0;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+            animation: twinkle 3s ease-in-out infinite;
+        }
+        .container { position: relative; z-index: 2; max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        /* Intro */
+        .intro-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #FED90F 0%, #E5B800 100%);
+            display: flex; align-items: center; justify-content: center; z-index: 10000;
+            transition: opacity 0.5s ease;
+        }
+        .intro-overlay.fade-out { opacity: 0; pointer-events: none; }
+        .intro-content { text-align: center; animation: introPop 0.4s ease-out; }
+        @keyframes introPop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .intro-title { font-size: 2.2rem; color: #1a5f7a; text-shadow: 2px 2px 0 white; }
+        .intro-sub { color: #1a5f7a; font-size: 0.9rem; font-weight: bold; }
+        .intro-loading { width: 150px; height: 3px; background: rgba(0,0,0,0.2); border-radius: 5px; margin: 15px auto 0; overflow: hidden; }
+        .intro-loading-bar { width: 0%; height: 100%; background: #1a5f7a; animation: loadBar 0.6s ease forwards; }
+        @keyframes loadBar { to { width: 100%; } }
+        
+        .screen { transition: all 0.2s ease; }
+        .screen-hidden { display: none; }
+        .screen-visible { display: block; animation: fadeSlide 0.2s ease; }
+        @keyframes fadeSlide { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .springfield-header {
+            background: linear-gradient(135deg, #2d7a4d 0%, #1b5e3a 100%);
+            border-radius: 30px; padding: 14px 20px; margin-bottom: 18px;
+            box-shadow: 0 5px 0 #0d3b21; text-align: center;
+        }
+        .springfield-header::before { content: "🍩"; position: absolute; font-size: 50px; color: #FED90F; opacity: 0.15; left: -10px; top: -10px; }
+        .springfield-header::after { content: "★"; position: absolute; font-size: 40px; color: #FED90F; opacity: 0.15; right: 10px; bottom: -15px; }
+        .springfield-title { font-size: 1.5rem; color: #FED90F; text-shadow: 2px 2px 0 #B87C00; }
+        .springfield-subtitle { color: #FFF8E1; font-size: 0.7rem; }
+        
+        /* Cards */
+        .character-card {
+            background: linear-gradient(135deg, #fff 0%, #FFF3D0 100%);
+            border-radius: 18px; padding: 8px; transition: all 0.12s ease;
+            box-shadow: 0 4px 0 #c2a13a; cursor: pointer; text-align: center; border: 1px solid #FED90F;
+            animation: cardPop 0.2s ease backwards;
+        }
+        .character-card:hover:not(.eliminated) { transform: translateY(-3px); box-shadow: 0 7px 0 #c2a13a; }
+        .character-card.eliminated { opacity: 0.3; filter: grayscale(0.7); transform: scale(0.95); pointer-events: none; }
+        .character-card img { width: 65px; height: 65px; object-fit: contain; margin-bottom: 5px; border-radius: 12px; background: #fff0cc; }
+        @media (max-width: 600px) { .character-card img { width: 50px; height: 50px; } }
+        .character-name { font-weight: bold; color: #8B6914; font-size: 9px; padding: 3px 5px; display: inline-block; }
+        
+        /* Botões */
+        .btn { padding: 8px 20px; font-size: 0.85rem; font-weight: bold; border: none; border-radius: 60px; cursor: pointer; transition: 0.05s linear; font-family: inherit; box-shadow: 0 3px 0 rgba(0,0,0,0.2); }
+        .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.2); }
+        .btn-primary { background: #0088BB; color: white; }
+        .btn-success { background: #4e8c3a; color: white; }
+        .btn-warning { background: #d98c2b; color: white; }
+        .btn-danger { background: #b33a2c; color: white; }
+        .btn-close { background: #6c757d; color: white; }
+        
+        .characters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 12px; max-height: 400px; overflow-y: auto; padding: 5px; }
+        @media (max-width: 600px) { .characters-grid { grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); } }
+        
+        .question-area { margin: 15px 0; padding: 15px; background: rgba(255,255,235,0.95); border-radius: 18px; }
+        .question-area input { width: 70%; padding: 10px; border-radius: 50px; border: 2px solid #FED90F; }
+        .question-area button { width: 25%; padding: 10px; }
+        .chat-area { background: #2c3e2f; color: #ffe484; padding: 10px; border-radius: 18px; height: 150px; overflow-y: auto; margin-top: 15px; }
+        .chat-area div { margin-bottom: 8px; padding: 5px; border-bottom: 1px solid #ffe48433; }
+        .guess-input { display: flex; gap: 10px; margin-top: 15px; }
+        .guess-input input { flex: 1; padding: 10px; border-radius: 50px; border: 2px solid #FED90F; }
+        
+        .avatar-spin { width: 55px; height: 55px; background: #FED90F; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.2); }
+        .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #2c2c2c; color: #FED90F; padding: 6px 14px; border-radius: 40px; z-index: 3000; animation: fadeToast 0.2s ease; font-weight: bold; font-size: 0.7rem; }
+        @keyframes fadeToast { from { opacity: 0; transform: translateX(-50%) translateY(15px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        input { font-family: inherit; padding: 8px 12px; border-radius: 50px; border: 2px solid #FED90F; background: white; font-size: 0.8rem; outline: none; width: 100%; margin: 5px 0; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .turn-indicator { padding: 4px 14px; border-radius: 50px; font-weight: bold; font-size: 0.7rem; }
+        .turn-mine { background: #4e8c3a; color: white; }
+        .turn-opponent { background: #b33a2c; color: white; }
+        .message-area { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2c3e2f; color: #FED90F; padding: 8px 20px; border-radius: 30px; z-index: 1000; font-weight: bold; font-size: 0.8rem; animation: fadeMsg 2s ease forwards; }
+        .online-status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #4e8c3a; margin-right: 5px; animation: pulse 1s infinite; }
+        .room-code-display { font-size: 2rem; font-weight: bold; background: #FED90F; padding: 10px; border-radius: 15px; text-align: center; letter-spacing: 5px; margin: 15px 0; }
+        .waiting-spinner { width: 25px; height: 25px; border: 3px solid #ffe7b0; border-top-color: #FED90F; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 10px auto; }
+    </style>
+</head>
+<body>
+
+<div id="introScreen" class="intro-overlay">
+    <div class="intro-content">
+        <div class="intro-title">CARA A CARA</div>
+        <div class="intro-sub">THE SIMPSONS EDITION • ONLINE</div>
+        <div class="intro-loading"><div class="intro-loading-bar"></div></div>
+    </div>
+</div>
+
+<div id="app"></div>
+
+<script>
+    // ==================== BIBLIOTECA DE PERSONAGENS (24) ====================
+    const SimpsonsLibrary = {
+        characters: [
+            { id: 1, nome: 'Homer Simpson', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'careca', roupa: 'branco', familia: true, imagem: 'https://upload.wikimedia.org/wikipedia/en/0/02/Homer_Simpson_2006.png' },
+            { id: 2, nome: 'Marge Simpson', genero: 'F', idade: 'adulto', oculos: false, cabelo: 'azul_alto', roupa: 'verde', familia: true, imagem: 'https://upload.wikimedia.org/wikipedia/en/0/0b/Marge_Simpson.png' },
+            { id: 3, nome: 'Bart Simpson', genero: 'M', idade: 'crianca', oculos: false, cabelo: 'espetado', roupa: 'laranja', familia: true, imagem: 'https://upload.wikimedia.org/wikipedia/en/a/aa/Bart_Simpson_200px.png' },
+            { id: 4, nome: 'Lisa Simpson', genero: 'F', idade: 'crianca', oculos: false, cabelo: 'estrela', roupa: 'vermelho', familia: true, imagem: 'https://upload.wikimedia.org/wikipedia/en/e/ec/Lisa_Simpson.png' },
+            { id: 5, nome: 'Maggie Simpson', genero: 'F', idade: 'bebe', oculos: false, cabelo: 'pequeno', roupa: 'azul', familia: true, imagem: 'https://upload.wikimedia.org/wikipedia/en/9/9d/Maggie_Simpson.png' },
+            { id: 6, nome: 'Moe Szyslak', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'careca', roupa: 'camisa', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/8/80/Moe_Szyslak.png' },
+            { id: 7, nome: 'Ned Flanders', genero: 'M', idade: 'adulto', oculos: true, cabelo: 'castanho', roupa: 'verde', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/8/84/Ned_Flanders.png' },
+            { id: 8, nome: 'Krusty', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'verde', roupa: 'colorido', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/5/5a/Krustytheclown.png' },
+            { id: 9, nome: 'Mr. Burns', genero: 'M', idade: 'idoso', oculos: false, cabelo: 'careca', roupa: 'cinza', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/5/56/Mr_Burns.png' },
+            { id: 10, nome: 'Nelson Muntz', genero: 'M', idade: 'crianca', oculos: false, cabelo: 'azul', roupa: 'camisa', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/c/c6/Nelson_Muntz.PNG' },
+            { id: 11, nome: 'Milhouse', genero: 'M', idade: 'crianca', oculos: true, cabelo: 'azul', roupa: 'azul', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/1/11/Milhouse_Van_Houten.png' },
+            { id: 12, nome: 'Apu', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'preto', roupa: 'branco', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/2/23/Apu_Nahasapeemapetilon.png' },
+            { id: 13, nome: 'Chefe Wiggum', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'careca', roupa: 'azul', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/e/e4/Clancy_Wiggum.png' },
+            { id: 14, nome: 'Skinner', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'ralo', roupa: 'marrom', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/2/26/Principal_Skinner.png' },
+            { id: 15, nome: 'Ralph Wiggum', genero: 'M', idade: 'crianca', oculos: false, cabelo: 'espetado', roupa: 'amarelo', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/2/2a/Ralph_Wiggum.png' },
+            { id: 16, nome: 'Comic Guy', genero: 'M', idade: 'adulto', oculos: true, cabelo: 'escuro', roupa: 'roxo', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/b/ba/Comic_Book_Guy.png' },
+            { id: 17, nome: 'Professor Frink', genero: 'M', idade: 'adulto', oculos: true, cabelo: 'careca', roupa: 'branco', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/5/56/Professor_Frink.png' },
+            { id: 18, nome: 'Patty Bouvier', genero: 'F', idade: 'adulto', oculos: false, cabelo: 'azul', roupa: 'verde', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/f/f3/Patty_Bouvier.png' },
+            { id: 19, nome: 'Selma Bouvier', genero: 'F', idade: 'adulto', oculos: false, cabelo: 'azul', roupa: 'verde', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/2/25/Selma_Bouvier.png' },
+            { id: 20, nome: 'Willie', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'ruivo', roupa: 'verde', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/5/5b/Groundskeeper_Willie.png' },
+            { id: 21, nome: 'Otto Mann', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'verde', roupa: 'camisa', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/7/7a/Otto_Mann.png' },
+            { id: 22, nome: 'Lenny', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'castanho', roupa: 'azul', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/1/1a/Lenny_Leonard.png' },
+            { id: 23, nome: 'Carl', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'careca', roupa: 'verde', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/8/8e/Carl_Carlson.png' },
+            { id: 24, nome: 'Barney', genero: 'M', idade: 'adulto', oculos: false, cabelo: 'castanho', roupa: 'camisa', familia: false, imagem: 'https://upload.wikimedia.org/wikipedia/en/7/7e/Barney_Gumble.png' }
+        ],
+
+        getCharacter(id) { return this.characters.find(c => c.id === id); },
+        getRandomCharacter() { return this.characters[Math.floor(Math.random() * this.characters.length)]; }
+    };
+
+    // ==================== FIREBASE ====================
+    const firebaseConfig = {
+        apiKey: "AIzaSyATdGCu7aiCX-JSCpr2gvsS_GBYSl_cSUs",
+        authDomain: "babydoll-38338.firebaseapp.com",
+        databaseURL: "https://babydoll-38338-default-rtdb.firebaseio.com",
+        projectId: "babydoll-38338",
+        storageBucket: "babydoll-38338.firebasestorage.app",
+        messagingSenderId: "532837179930",
+        appId: "1:532837179930:web:9bca40773fb2304b23e7a3"
+    };
+    
+    let db = null;
+    try {
+        if (typeof firebase !== 'undefined') {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            console.log("Firebase conectado!");
+        }
+    } catch(e) { console.log("Erro no Firebase:", e); }
+
+    // ==================== ESTADO DO JOGO ====================
+    let usuarioAtual = null;
+    let usuarios = JSON.parse(localStorage.getItem('simpsons_usuarios') || '[]');
+    let salaListener = null;
+    let meuId = Math.random().toString(36).substring(2, 8);
+
+    function mostrarMensagem(msg) { const d=document.createElement('div'); d.className='message-area'; d.innerHTML=msg; document.body.appendChild(d); setTimeout(()=>d.remove(),2000); }
+    function mostrarToast(msg) { const t=document.createElement('div'); t.className='toast'; t.innerText=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),1500); }
+    function salvarUsuarios() { localStorage.setItem('simpsons_usuarios', JSON.stringify(usuarios)); }
+    function setUsuario(user) { usuarioAtual = user; localStorage.setItem('simpsons_atual', JSON.stringify(user)); }
+
+    const app = document.getElementById('app');
+    setTimeout(() => { const intro = document.getElementById('introScreen'); if(intro) { intro.classList.add('fade-out'); setTimeout(()=>intro.remove(),500); } }, 800);
+
+    for(let i=0;i<12;i++){ const c=document.createElement('div'); c.className='cloud'; c.style.cssText=`width:${70+Math.random()*150}px;height:${25+Math.random()*50}px;top:${Math.random()*100}%;animation-duration:${15+Math.random()*25}s;`; document.body.appendChild(c); }
+    for(let i=0;i<40;i++){ const s=document.createElement('div'); s.className='star'; s.style.cssText=`width:${1+Math.random()*3}px;height:${1+Math.random()*3}px;left:${Math.random()*100}%;top:${Math.random()*100}%;animation-delay:${Math.random()*3}s;`; document.body.appendChild(s); }
+
+    // ==================== TELAS ====================
+    function telaPrincipal() {
+        app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">CARA A CARA</div><div class="springfield-subtitle">The Simpsons Edition | Multiplayer Online</div></div><div style="text-align:center; padding:20px;"><button class="btn btn-primary" id="btnJogar">🎮 JOGAR ONLINE</button></div></div>`;
+        document.getElementById('btnJogar')?.addEventListener('click', () => {
+            const salvo = localStorage.getItem('simpsons_atual');
+            if(salvo) { usuarioAtual = JSON.parse(salvo); telaPerfil(); } else { telaLogin(); }
+        });
+    }
+
+    function telaLogin() {
+        app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">ENTRAR</div></div><div style="text-align:center; padding:20px;"><div class="avatar-spin">🍩</div><input type="text" id="loginNome" placeholder="Nome"><input type="password" id="loginSenha" placeholder="Senha"><button class="btn btn-primary" id="btnEntrar">Entrar</button><button class="btn btn-warning" id="btnCadastrar">Criar Conta</button></div></div>`;
+        document.getElementById('btnEntrar')?.addEventListener('click', () => {
+            const nome = document.getElementById('loginNome').value.trim();
+            const senha = document.getElementById('loginSenha').value;
+            const user = usuarios.find(u => u.nome === nome && u.senha === senha);
+            if(user) { setUsuario(user); telaPerfil(); } else mostrarToast('Nome ou senha incorretos');
+        });
+        document.getElementById('btnCadastrar')?.addEventListener('click', telaRegistro);
+    }
+
+    function telaRegistro() {
+        app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">CRIAR PERFIL</div></div><div style="text-align:center; padding:20px;"><div id="avatarPrev" class="avatar-spin">😀</div><div style="margin:5px 0;">${['😀','🍩','🛹','🎷','🍺','👮','🤓','🐱'].map(e=>`<span style="font-size:1.6rem; margin:3px; cursor:pointer;" onclick="document.getElementById('avatarPrev').innerText='${e}'">${e}</span>`).join('')}</div><input type="text" id="regNome" placeholder="Nome"><input type="password" id="regSenha" placeholder="Senha"><button class="btn btn-success" id="btnRegistrar">Criar</button><button class="btn btn-close" id="btnVoltarLogin">Voltar</button></div></div>`;
+        document.getElementById('btnRegistrar')?.addEventListener('click', () => {
+            const nome = document.getElementById('regNome').value.trim();
+            const senha = document.getElementById('regSenha').value;
+            const avatar = document.getElementById('avatarPrev').innerText;
+            if(!nome||!senha) { mostrarToast('Preencha tudo'); return; }
+            if(usuarios.find(u=>u.nome===nome)) { mostrarToast('Nome já existe'); return; }
+            usuarios.push({ nome, senha, avatar, pontos: 0 });
+            salvarUsuarios();
+            setUsuario({ nome, senha, avatar, pontos: 0 });
+            telaPerfil();
+        });
+        document.getElementById('btnVoltarLogin')?.addEventListener('click', telaLogin);
+    }
+
+    function telaPerfil() {
+        app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">PERFIL</div></div><div style="text-align:center; padding:20px;"><div class="avatar-spin">${usuarioAtual.avatar}</div><h3>${usuarioAtual.nome}</h3><p>⭐ 5 AMIGOS ⭐</p><p>🏆 PONTOS: ${usuarioAtual.pontos||0}</p><div style="margin:15px 0;"><button class="btn btn-primary" id="btnOnline"><span class="online-status"></span> 🌍 CRIAR/ENTRAR NA SALA</button></div><button class="btn btn-danger" id="btnSair">Sair</button></div></div>`;
+        document.getElementById('btnOnline')?.addEventListener('click', () => { if(db) { lobbyOnline(); } else { mostrarToast('Firebase não conectado!'); } });
+        document.getElementById('btnSair')?.addEventListener('click', () => { localStorage.removeItem('simpsons_atual'); telaPrincipal(); });
+    }
+
+    // ==================== MODO ONLINE ====================
+    function lobbyOnline() {
+        if(!db) { mostrarToast('Firebase não disponível!'); telaPerfil(); return; }
+        app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">ONLINE</div></div><div style="padding:15px; text-align:center;"><div style="background:#2c3e2f; color:#ffe484; padding:10px; border-radius:15px; margin-bottom:15px;">🎮 Conectado ao Firebase! 🎮</div><button class="btn btn-primary" id="btnCriarSala">➕ CRIAR SALA</button><div style="margin:15px 0;"><input type="text" id="codigoSala" placeholder="Código" maxlength="6" style="text-transform:uppercase"><button class="btn btn-success" id="btnEntrarSala">🔗 ENTRAR NA SALA</button></div><button class="btn btn-close" id="btnVoltarPerfil">Voltar</button></div></div>`;
+        
+        document.getElementById('btnCriarSala')?.addEventListener('click', () => {
+            const codigo = Math.random().toString(36).substring(2,8).toUpperCase();
+            const aleatorio = SimpsonsLibrary.getRandomCharacter();
+            db.ref(`salas/${codigo}`).set({
+                codigo, criador: usuarioAtual.nome, criadorId: meuId, criadorSecreto: aleatorio.id,
+                convidado: null, convidadoId: null, convidadoSecreto: null,
+                disponiveisCriador: SimpsonsLibrary.characters.map(c=>c.id), disponiveisConvidado: SimpsonsLibrary.characters.map(c=>c.id),
+                vez: 'criador', status: 'espera', vencedor: null, mensagens: []
+            });
+            mostrarToast(`Sala ${codigo} criada!`);
+            iniciarJogoOnlineFirebase(codigo, true, aleatorio.id);
+        });
+        document.getElementById('btnEntrarSala')?.addEventListener('click', () => { const cod=document.getElementById('codigoSala').value.trim().toUpperCase(); if(cod) entrarSalaOnlineFirebase(cod); else mostrarToast('Digite o código'); });
+        document.getElementById('btnVoltarPerfil')?.addEventListener('click', () => telaPerfil());
+    }
+
+    function entrarSalaOnlineFirebase(codigo) {
+        db.ref(`salas/${codigo}`).once('value', (snapshot) => {
+            const sala = snapshot.val();
+            if(!sala) { mostrarToast('Sala não encontrada!'); return; }
+            if(sala.convidado) { mostrarToast('Sala cheia!'); return; }
+            const aleatorio = SimpsonsLibrary.getRandomCharacter();
+            db.ref(`salas/${codigo}`).update({ convidado: usuarioAtual.nome, convidadoId: meuId, convidadoSecreto: aleatorio.id, status: 'jogando' });
+            mostrarToast(`Entrou na sala ${codigo}!`);
+            iniciarJogoOnlineFirebase(codigo, false, aleatorio.id);
+        });
+    }
+
+    function iniciarJogoOnlineFirebase(codigo, souCriador, meuSegredoId) {
+        if(salaListener) salaListener.off();
+        salaListener = db.ref(`salas/${codigo}`);
+        salaListener.on('value', (snapshot) => {
+            const sala = snapshot.val();
+            if(!sala) { mostrarToast('Sala encerrada!'); if(salaListener) salaListener.off(); telaPerfil(); return; }
+            if(souCriador && !sala.convidado) {
+                app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">🌍 AGUARDANDO</div></div><div style="text-align:center; padding:30px;"><div class="waiting-spinner"></div><h3>Aguardando oponente...</h3><div class="room-code-display">${codigo}</div><p>Compartilhe este código com seu amigo!</p><button class="btn btn-danger" id="btnCancelarEspera">Cancelar</button></div></div>`;
+                document.getElementById('btnCancelarEspera')?.addEventListener('click', () => { if(salaListener) salaListener.off(); db.ref(`salas/${codigo}`).remove(); telaPerfil(); });
+                return;
+            }
+            if(sala.vencedor) {
+                if(sala.vencedor === usuarioAtual.nome) {
+                    usuarioAtual.pontos = (usuarioAtual.pontos||0)+100;
+                    const idx=usuarios.findIndex(u=>u.nome===usuarioAtual.nome);
+                    if(idx!==-1) usuarios[idx].pontos=usuarioAtual.pontos;
+                    salvarUsuarios();
+                    mostrarMensagem('🏆 VITÓRIA! +100 pontos!');
+                } else mostrarMensagem(`😞 ${sala.vencedor} venceu!`);
+                if(salaListener) salaListener.off();
+                setTimeout(()=>telaPerfil(),2000);
+                return;
+            }
+            renderizarJogoOnlineFirebase(sala, souCriador);
+        });
+    }
+
+    function verificarCaracteristica(personagem, pergunta) {
+        const p = pergunta.toLowerCase();
+        if(p.includes('homem') || p.includes('masculino')) return personagem.genero === 'M';
+        if(p.includes('mulher') || p.includes('feminino')) return personagem.genero === 'F';
+        if(p.includes('adulto')) return personagem.idade === 'adulto';
+        if(p.includes('criança') || p.includes('crianca')) return personagem.idade === 'crianca';
+        if(p.includes('bebê') || p.includes('bebe')) return personagem.idade === 'bebe';
+        if(p.includes('idoso')) return personagem.idade === 'idoso';
+        if(p.includes('óculos') || p.includes('oculos')) return personagem.oculos === true;
+        if(p.includes('careca')) return personagem.cabelo === 'careca';
+        if(p.includes('cabelo azul')) return personagem.cabelo === 'azul' || personagem.cabelo === 'azul_alto';
+        if(p.includes('cabelo espetado')) return personagem.cabelo === 'espetado';
+        if(p.includes('roupa azul')) return personagem.roupa === 'azul';
+        if(p.includes('roupa vermelha')) return personagem.roupa === 'vermelho';
+        if(p.includes('roupa verde')) return personagem.roupa === 'verde';
+        if(p.includes('família simpson')) return personagem.familia === true;
+        return null;
+    }
+
+    async function renderizarJogoOnlineFirebase(sala, souCriador) {
+        const oponente = souCriador ? sala.convidado : sala.criador;
+        const minhaVez = (souCriador && sala.vez==='criador') || (!souCriador && sala.vez==='convidado');
+        const idsOponente = souCriador ? sala.disponiveisConvidado : sala.disponiveisCriador;
+        const personagensOponente = idsOponente.map(id=>SimpsonsLibrary.getCharacter(id)).filter(p=>p);
+        let gridHtml = '';
+        for(const p of personagensOponente) {
+            gridHtml += `<div class="character-card" onclick="${minhaVez && !sala.vencedor ? `eliminarOnlineFirebase('${sala.codigo}',${p.id},${souCriador})` : ''}"><img src="${p.imagem}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%23FED90F%22/%3E%3Ctext x=%2250%22 y=%2270%22 text-anchor=%22middle%22 fill=%22%238B6914%22 font-size=%2240%22%3E${p.nome.charAt(0)}%3C/text%3E%3C/svg%3E'"><div class="character-name">${p.nome}</div></div>`;
+        }
+        
+        let chatHtml = '';
+        if(sala.mensagens) {
+            for(const msg of sala.mensagens) {
+                chatHtml += `<div><strong>${msg.remetente}:</strong> ${msg.texto}</div>`;
+            }
+        }
+        
+        app.innerHTML = `<div class="container screen screen-visible"><div class="springfield-header"><div class="springfield-title">🌍 ONLINE - ${sala.codigo}</div></div><div style="padding:12px;"><div class="flex-between" style="margin-bottom:10px;"><span>👤 ${usuarioAtual.nome}</span><span class="turn-indicator ${minhaVez?'turn-mine':'turn-opponent'}">${minhaVez?'SUA VEZ':'VEZ DO OPONENTE'}</span><span>👤 ${oponente}</span></div><div style="background:rgba(255,255,235,0.9); border-radius:18px; padding:12px;"><h3>Personagens do Oponente (${personagensOponente.length})</h3><div class="characters-grid" id="gridOnline">${gridHtml}</div></div><div class="question-area"><input type="text" id="perguntaOnline" placeholder="Digite sua pergunta... (ex: É homem? Usa óculos?)"><button id="btnPerguntarOnline" class="btn-primary">❓ PERGUNTAR</button></div><div class="guess-input"><input type="text" id="chuteOnline" placeholder="Chutar personagem..."><button id="btnChutarOnline" class="btn-warning">🎯 CHUTAR</button></div><div class="chat-area" id="chatOnline">${chatHtml}</div><button class="btn btn-danger" id="btnSairOnline">Sair da Sala</button></div></div>`;
+        
+        document.getElementById('btnPerguntarOnline')?.addEventListener('click', () => {
+            if(!minhaVez) { mostrarMensagem('Aguarde sua vez!'); return; }
+            const pergunta = document.getElementById('perguntaOnline').value.trim();
+            if(!pergunta) return;
+            db.ref(`salas/${sala.codigo}`).update({ perguntaAtual: pergunta, aguardandoResposta: true, esperandoRespostaDe: meuId });
+            document.getElementById('perguntaOnline').value = '';
+        });
+        
+        document.getElementById('btnChutarOnline')?.addEventListener('click', () => {
+            if(!minhaVez) { mostrarMensagem('Aguarde sua vez!'); return; }
+            const chute = document.getElementById('chuteOnline').value.trim();
+            if(!chute) return;
+            const segredoOponente = souCriador ? sala.convidadoSecreto : sala.criadorSecreto;
+            const personagemSecreto = SimpsonsLibrary.getCharacter(segredoOponente);
+            if(chute.toLowerCase() === personagemSecreto.nome.toLowerCase()) {
+                db.ref(`salas/${sala.codigo}`).update({ vencedor: usuarioAtual.nome });
+                mostrarMensagem('🎯 ACERTOU! Você venceu!');
+            } else {
+                mostrarMensagem(`❌ ${chute} não é o personagem secreto!`);
+            }
+            document.getElementById('chuteOnline').value = '';
+        });
+        
+        document.getElementById('btnSairOnline')?.addEventListener('click', () => { if(salaListener) salaListener.off(); db.ref(`salas/${sala.codigo}`).remove(); telaPerfil(); });
+        
+        window.eliminarOnlineFirebase = (codigo, id, souCriador) => {
+            if(!minhaVez) { mostrarMensagem('Aguarde sua vez!'); return; }
+            db.ref(`salas/${codigo}`).once('value', (snapshot) => {
+                const salaUp = snapshot.val();
+                if(!salaUp || salaUp.vencedor) return;
+                const segredoOponente = souCriador ? salaUp.convidadoSecreto : salaUp.criadorSecreto;
+                if(id === segredoOponente) {
+                    db.ref(`salas/${codigo}`).update({ vencedor: usuarioAtual.nome });
+                    mostrarMensagem('🎯 ACERTOU! Você venceu!');
+                } else {
+                    const lista = souCriador ? salaUp.disponiveisConvidado : salaUp.disponiveisCriador;
+                    const novaLista = lista.filter(i=>i!==id);
+                    const updates = {};
+                    if(souCriador) updates.disponiveisConvidado = novaLista;
+                    else updates.disponiveisCriador = novaLista;
+                    updates.vez = souCriador ? 'convidado' : 'criador';
+                    db.ref(`salas/${codigo}`).update(updates);
+                }
+            });
+        };
+        
+        db.ref(`salas/${sala.codigo}`).on('value', (snapshot) => {
+            const salaUp = snapshot.val();
+            if(!salaUp) return;
+            if(salaUp.aguardandoResposta && salaUp.esperandoRespostaDe !== meuId) {
+                const pergunta = salaUp.perguntaAtual;
+                const meuPersonagem = SimpsonsLibrary.getCharacter(meuId === salaUp.criadorId ? salaUp.criadorSecreto : salaUp.convidadoSecreto);
+                const resultado = verificarCaracteristica(meuPersonagem, pergunta);
+                const respostaTexto = resultado === null ? '❓ Não entendi a pergunta' : (resultado ? '✅ SIM' : '❌ NÃO');
+                const mensagens = salaUp.mensagens || [];
+                mensagens.push({ remetente: usuarioAtual.nome, texto: `💬 "${pergunta}"` });
+                mensagens.push({ remetente: usuarioAtual.nome, texto: `📢 Resposta: ${respostaTexto}` });
+                const updates = { mensagens: mensagens, aguardandoResposta: false, perguntaAtual: null, esperandoRespostaDe: null };
+                if(resultado === false) {
+                    const listaAtual = meuId === salaUp.criadorId ? salaUp.disponiveisCriador : salaUp.disponiveisConvidado;
+                    const novaLista = listaAtual.filter(id => !verificarCaracteristica(SimpsonsLibrary.getCharacter(id), pergunta));
+                    if(meuId === salaUp.criadorId) updates.disponiveisCriador = novaLista;
+                    else updates.disponiveisConvidado = novaLista;
+                    updates.vez = meuId === salaUp.criadorId ? 'convidado' : 'criador';
+                } else if(resultado === true) {
+                    const listaAtual = meuId === salaUp.criadorId ? salaUp.disponiveisCriador : salaUp.disponiveisConvidado;
+                    const novaLista = listaAtual.filter(id => verificarCaracteristica(SimpsonsLibrary.getCharacter(id), pergunta));
+                    if(meuId === salaUp.criadorId) updates.disponiveisCriador = novaLista;
+                    else updates.disponiveisConvidado = novaLista;
+                    updates.vez = meuId === salaUp.criadorId ? 'convidado' : 'criador';
+                } else {
+                    updates.vez = meuId === salaUp.criadorId ? 'convidado' : 'criador';
+                }
+                db.ref(`salas/${sala.codigo}`).update(updates);
+            }
+        });
+    }
+
+    telaPrincipal();
+</script>
+</body>
+</html>
